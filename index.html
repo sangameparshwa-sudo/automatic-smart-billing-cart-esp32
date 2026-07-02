@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Smart Billing Cart</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<style>
+    body {
+        margin: 0;
+        padding: 0;
+        font-family: 'Poppins', sans-serif;
+        background: linear-gradient(135deg, #1fa2ff, #12d8fa, #a6ffcb);
+        min-height: 100vh;
+        text-align: center;
+        color: white;
+        transition: background 1s ease-in-out;
+    }
+
+    /* background when items exist */
+    body.filled {
+        background: linear-gradient(135deg, #00c853, #aeea00, #ffeb3b);
+    }
+
+    /* Container card */
+    .container {
+        width: 70%;
+        margin: 30px auto;
+        background: rgba(255, 255, 255, 0.15);
+        backdrop-filter: blur(10px);
+        border-radius: 20px;
+        padding: 30px;
+        box-shadow: 0 8px 25px rgba(0,0,0,0.2);
+    }
+
+    h2 {
+        font-size: 34px;
+        font-weight: 700;
+        margin-bottom: 15px;
+    }
+
+    /* Hide camera completely (fix button click issue) */
+    #videoFrame {
+        display: none !important;
+        position: absolute !important;
+        pointer-events: none !important;
+        width: 0 !important;
+        height: 0 !important;
+        opacity: 0 !important;
+        z-index: -9999 !important;
+    }
+
+    #status {
+        margin-top: 10px;
+        font-size: 20px;
+        font-weight: 600;
+    }
+
+    /* BUTTONS */
+    .btn {
+        padding: 12px 22px;
+        margin: 5px;
+        font-size: 16px;
+        cursor: pointer;
+        border-radius: 10px;
+        border: none;
+        color: white;
+        font-weight: 600;
+    }
+
+    #startBtn { background: #28a745; }
+    #resetBtn { background: #6f42c1; }
+    #printBtn { background: #ff9800; }
+
+    /* Floating STOP button */
+    #stopBtn {
+        position: fixed;
+        bottom: 25px;
+        right: 25px;
+        width: 55px;
+        height: 55px;
+        border-radius: 50%;
+        background: #d50000;
+        border: none;
+        cursor: pointer;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+
+    #stopBtn:hover { background: #b71c1c; }
+
+    /* BILL TABLE */
+    table {
+        width: 90%;
+        margin: 25px auto;
+        border-collapse: collapse;
+        background: rgba(255,255,255,0.25);
+        border-radius: 12px;
+        overflow: hidden;
+    }
+
+    th, td {
+        padding: 14px;
+        border-bottom: 1px solid rgba(255,255,255,0.2);
+        font-size: 18px;
+        color: white;
+    }
+
+    th {
+        background: rgba(0,0,0,0.25);
+        font-size: 20px;
+        font-weight: 700;
+    }
+
+    #total {
+        margin-top: 20px;
+        font-size: 28px;
+        font-weight: 700;
+    }
+
+    /* PRINT BILL OVERLAY */
+    #printScreen, #qrScreen {
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.85);
+        backdrop-filter: blur(10px);
+        display: none;
+        color: white;
+        padding-top: 60px;
+        text-align: center;
+        z-index: 99999;
+    }
+
+    .closeBtn {
+        margin-top: 20px;
+        padding: 12px 22px;
+        background: #ff1744;
+        border-radius: 10px;
+        border: none;
+        font-size: 16px;
+        font-weight: 600;
+        cursor: pointer;
+    }
+
+    .credit {
+        margin-top: 30px;
+        font-size: 18px;
+        opacity: 0.8;
+    }
+</style>
+
+</head>
+
+<body>
+
+<!-- Hidden stream -->
+<img id="videoFrame" src="http://10.56.234.92:81/stream">
+
+<div class="container">
+
+    <h2>Smart Billing Cart</h2>
+
+    <div id="status">Status: Waiting...</div>
+
+    <button class="btn" id="startBtn">Start Auto Billing</button>
+    <button class="btn" id="resetBtn">Reset Bill</button>
+    <button class="btn" id="printBtn">Print Bill</button>
+
+    <!-- Floating STOP button -->
+    <button id="stopBtn"></button>
+
+    <!-- BILL TABLE -->
+    <table>
+        <thead>
+            <tr>
+                <th>Item</th>
+                <th>Qty</th>
+                <th>Unit ₹</th>
+                <th>Total ₹</th>
+            </tr>
+        </thead>
+        <tbody id="billBody"></tbody>
+    </table>
+
+    <div id="total">Grand Total: ₹0</div>
+
+    <div class="credit">Made by <b>Siddharth</b>, <b>Sugreshwara</b>, <b>Sumit</b> and <b>Parshw</b></div>
+
+</div>
+
+<!-- PRINT BILL SCREEN -->
+<div id="printScreen">
+    <h2>Your Final Bill</h2>
+    <div id="printContent"></div>
+    <button class="btn" id="showQRBtn" style="background:#00e676;">Show Payment QR</button>
+    <button class="closeBtn" onclick="closePrint()">Close</button>
+</div>
+
+<!-- QR SCREEN -->
+<div id="qrScreen">
+    <h2>Scan to Pay</h2>
+    <img src="https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=Payment_Example" />
+    <br>
+    <button class="closeBtn" onclick="closeQR()">Close</button>
+</div>
+
+<script>
+/* ==== CONFIG ==== */
+const ESP32_URL = "http://10.56.234.92/results";
+const POLL_RATE = 1000;
+
+const PRODUCTS = {
+    "dove": { name: "Dove Soap", price: 65 },
+    "vim": { name: "Vim Bar", price: 5 },
+    "rin": { name: "Rin Bar", price: 10 }
+};
+
+let BILL = {};
+let polling = null;
+let lastDetected = new Set();
+
+/* ==== BILL UPDATE ==== */
+function updateBackground() {
+    if (Object.keys(BILL).length === 0) document.body.classList.remove("filled");
+    else document.body.classList.add("filled");
+}
+
+function addItem(label) {
+    label = label.toLowerCase();
+    let key = Object.keys(PRODUCTS).find(k => label.includes(k));
+    if (!key) return;
+
+    if (!BILL[key]) {
+        BILL[key] = { qty: 1, price: PRODUCTS[key].price, name: PRODUCTS[key].name };
+        document.getElementById("status").innerText = "Added: " + PRODUCTS[key].name;
+    }
+
+    updateUI();
+}
+
+function removeItem(label) {
+    label = label.toLowerCase();
+    let key = Object.keys(PRODUCTS).find(k => label.includes(k));
+    if (!key) return;
+    delete BILL[key];
+    updateUI();
+}
+
+function updateUI() {
+    let body = document.getElementById("billBody");
+    body.innerHTML = "";
+    let total = 0;
+
+    for (let k in BILL) {
+        let it = BILL[k];
+        let rowTotal = it.qty * it.price;
+        total += rowTotal;
+
+        body.innerHTML += `
+            <tr>
+                <td>${it.name}</td>
+                <td>${it.qty}</td>
+                <td>${it.price}</td>
+                <td>${rowTotal}</td>
+            </tr>`;
+    }
+    document.getElementById("total").innerText = "Grand Total: ₹" + total;
+    updateBackground();
+}
+
+/* ==== FETCH DETECTIONS ==== */
+async function fetchResults() {
+    try {
+        let res = await fetch(ESP32_URL);
+        let data = await res.json();
+        let current = new Set();
+
+        (data.objects || []).forEach(o => {
+            if (o.score < 0.60) return;
+            current.add(o.label.toLowerCase());
+        });
+
+        current.forEach(lbl => { if (!lastDetected.has(lbl)) addItem(lbl); });
+        lastDetected.forEach(lbl => { if (!current.has(lbl)) removeItem(lbl); });
+
+        lastDetected = current;
+
+    } catch {
+        document.getElementById("status").innerText = "Error fetching ESP32!";
+    }
+}
+
+/* ==== BUTTONS ==== */
+document.getElementById("startBtn").onclick = () => {
+    if (!polling) polling = setInterval(fetchResults, POLL_RATE);
+    document.getElementById("status").innerText = "Auto Billing Started";
+};
+
+document.getElementById("stopBtn").onclick = () => {
+    clearInterval(polling);
+    polling = null;
+    document.getElementById("status").innerText = "Stopped";
+};
+
+document.getElementById("resetBtn").onclick = () => {
+    BILL = {};
+    lastDetected.clear();
+    updateUI();
+    document.getElementById("status").innerText = "Bill Reset";
+};
+
+/* ==== PRINT BILL ==== */
+document.getElementById("printBtn").onclick = () => {
+    clearInterval(polling);
+    polling = null;
+
+    let html = "<table style='width:80%;margin:auto;color:white;font-size:20px;'>";
+    html += "<tr><th>Item</th><th>Qty</th><th>₹</th></tr>";
+
+    let total = 0;
+    for (let k in BILL) {
+        let it = BILL[k];
+        total += it.qty * it.price;
+        html += `<tr><td>${it.name}</td><td>${it.qty}</td><td>${it.qty * it.price}</td></tr>`;
+    }
+
+    html += `</table><h2>Total: ₹${total}</h2>`;
+    document.getElementById("printContent").innerHTML = html;
+    document.getElementById("printScreen").style.display = "block";
+};
+
+/* Close print */
+function closePrint() {
+    document.getElementById("printScreen").style.display = "none";
+}
+
+/* ==== QR PAGE ==== */
+document.getElementById("showQRBtn").onclick = () => {
+    document.getElementById("qrScreen").style.display = "block";
+};
+
+function closeQR() {
+    document.getElementById("qrScreen").style.display = "none";
+}
+</script>
+
+</body>
+</html>
+
