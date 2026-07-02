@@ -31,8 +31,8 @@ No cloud required — all inference runs directly on the microcontroller.
 
 ## Team
 Built as a team project
-Parshw Sangame
-Sumit Sungar
-Siddharth N
-Sugureshwara H
+Parshw Sangame,
+Sumit Sungar,
+Siddharth N,
+Sugureshwara H.
 — B.E. Electronics Engineering, BIT Bangalore
